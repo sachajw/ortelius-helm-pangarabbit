@@ -1,0 +1,16 @@
+apiVersion: traefik.io/v1alpha1
+kind: IngressRoute
+metadata:
+  name: ortelius
+  namespace: ortelius
+spec:
+  entryPoints:
+    - websecure
+  routes:
+    - match: Host(`ortelius.pangarabbit.com`)
+      kind: Rule
+      services:
+        - name: ms-nginx
+          namespace: ortelius
+          kind: Service
+          port: 80
