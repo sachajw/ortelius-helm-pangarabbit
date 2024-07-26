@@ -5,6 +5,7 @@ metadata:
   namespace: ortelius
 spec:
   entryPoints:
+    - web
     - websecure
   routes:
     - match: Host(`ortelius.pangarabbit.com`)
