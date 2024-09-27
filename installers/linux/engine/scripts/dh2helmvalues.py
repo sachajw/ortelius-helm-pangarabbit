@@ -75,7 +75,9 @@ def main():
     os.chdir(tempdir.name)
 
     # clone and switch branch
-    run_git('git clone --depth 1  --branch ' gitbranch + ' ' + gitrepo + ' .')
+    run_git('git clone --depth 1  --branch ' + gitbranch + ' ' + gitrepo + ' .')
+    run_git('git config --global user.name "' + newvals.get('GitUserName', 'ortelius') + '"')
+    run_git('git config --global user.email "' + newvals.get('GitUserEmail', 'ortelius@users.noreply.github.com') + '"')
 
     # read in the helmvalues overlay file
     k_vals = {}
@@ -96,6 +98,11 @@ def main():
                         if (lookup is not None):
                             k_vals[key][index][subkey] = lookup
                 index = index+1
+        elif (isinstance(val,dict)):
+            for subkey in val.keys():
+                lookup = flat_newvals.get(key + '.' + subkey, None)
+                if (lookup is not None):
+                    k_vals[key][subkey] = lookup
         else:
             lookup = flat_newvals.get(key, None)
             if (lookup is not None):
@@ -107,6 +114,8 @@ def main():
     lines = subprocess.run(['cat', helmvalues], check=False, stdout=subprocess.PIPE).stdout.decode('utf-8').split("\n")
     for line in lines:
         print(line)
+
+    run_git('git add ' + helmvalues)
 
 # bump chart version number
     helmvalues = helmvalues.replace('values.yaml', 'Chart.yaml')
@@ -148,8 +157,7 @@ def main():
             with open(appfile, 'w') as file:
                 json.dump(comp2app, file)
 
-    run_git('git config --global user.name "' + newvals.get('GitUserName', 'ortelius') + '"')
-    run_git('git config --global user.email "' + newvals.get('GitUserEmail', 'ortelius@users.noreply.github.com') + '"')
+
     run_git('git add ' + helmvalues)
     run_git('git commit -m "[DeployHub deployment: ' + flat_newvals.get('images.tag', flat_newvals.get('images.newTag', flat_newvals.get('DockerTag', ''))) + ']"')
     run_git('git push')

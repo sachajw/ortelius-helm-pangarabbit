@@ -9,6 +9,8 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import yaml
+import urllib.parse
 
 from xml.sax.saxutils import escape
 
@@ -214,13 +216,15 @@ def main(protocol, sourcedir, targetdir, user, password, target, server, checkba
 
             fp_run.write("  - name: Execute File\n")
             if (rshell is not None):
-                fp_run.write("    win_command: " + rshell + " " + cmd + "\n")
+                fp_run.write("    win_command: " + rshell + " " + cmd + " 2>&1\n")
             else:
-                fp_run.write("    win_command: " + cmd + "\n")
+                fp_run.write("    win_command: " + cmd + " 2>&1\n")
             fp_run.write("    register: cat\n")
             fp_run.write("    changed_when: False\n")
             fp_run.write("  - name: Print Output\n")
             fp_run.write("    debug: var=cat.stdout_lines\n")
+            fp_run.write("  - name: Print Error\n")
+            fp_run.write("    debug: var=cat.stderr\n")
             fp_run.close()
         else:
             fp_hosts = open('hosts', 'w')
@@ -539,13 +543,21 @@ def main(protocol, sourcedir, targetdir, user, password, target, server, checkba
                     onjson = False
 
         if ("{" in jsonstr and "}" in jsonstr):
+            # jsonstr = jsonstr.replace(']\n}',']\n,')
+            with open('/tmp/err.txt', 'a') as f: f.write(jsonstr)
             data = json.loads(jsonstr)
         fplog.close()
 
+    print(cmd)
     if (data is not None):
+        if ('cat.stderr' in data):
+            lines = data['cat.stderr'].split('\\r\\n')
+            for line in lines:
+            	print(line)
+
         if ('cat.stdout_lines' in data):
             for line in data['cat.stdout_lines']:
-                print(line)
+            	print(line)
         else:
             print("<files>")
             for filename in glob.iglob(from_dir + '**/*', recursive=True):

@@ -17,6 +17,7 @@
 import base64
 import json
 import os
+import re
 import shutil
 import socket
 import subprocess
@@ -26,7 +27,6 @@ import time
 
 import qtoml
 import yaml
-
 from deployhub import dhapi
 
 #from pprint import pprint
@@ -36,11 +36,8 @@ def get_script_path():
     return os.path.dirname(os.path.realpath(sys.argv[0]))
 
 
-def upload_helm(override, chartvalues, newvals, helmtemplate):
+def upload_helm(override, chartvalues, newvals, helmtemplate, gitdir):
     my_env = os.environ.copy()
-
-    if not os.path.exists('helm'):
-        os.makedirs('helm')
 
     os.makedirs(os.path.dirname("helm/" + chartvalues), exist_ok=True)
     shutil.copy(override, "helm/" + chartvalues)
@@ -60,8 +57,6 @@ def upload_helm(override, chartvalues, newvals, helmtemplate):
     my_file = open("helm/" + chartvalues, "w")
     my_file.writelines(content_list)
     my_file.close()
-
-    os.chdir('helm')
 
     dhurl = newvals.get('dhurl', '')
     dhusr = newvals.get('dhuser', '')
@@ -113,20 +108,13 @@ def upload_helm(override, chartvalues, newvals, helmtemplate):
     my_env['environment'] = newvals.get('environment', 'ci')
     my_env['component'] = newvals.get('component','')
 
-    if (newvals.get('chartpublish', None) is not None):
-        pid = subprocess.Popen(get_script_path() + "/git-chartpublish.sh", env=my_env, shell=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
-        lines = ""
-        for line in pid.stdout.readlines():
-            line = line.decode('utf-8')
-            lines = lines + line
-        pid.wait()
-
     if (newvals.get('helmcapture', None) is None):
         return
 
     if ('helmrepo' not in newvals):
         return
 
+    os.chdir('helm')
     print("Starting Helm Capture")
 
     pid = subprocess.Popen(get_script_path() + "/helminfo.sh", env=my_env, shell=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
@@ -257,6 +245,34 @@ def main():
     yaml.dump(newvals, stream)
     stream.close()
     override = os.path.abspath(chartvalues)
+
+    # Use $component name to derive chartversion <component>;<variant>;<version>
+    # version = v<schematic>_g<git commit>
+    component = newvals.get('component','')
+    parts=component.split(';')[-1].split('_g')
+    clean_ver=re.sub(r'^v|^V|^v_|^V_','', parts[0])
+    clean_ver=re.sub(r'_','.', clean_ver)
+    parts=clean_ver.split('.')
+
+    if (len(parts) <= 3):
+        derived_chartversion = clean_ver
+    else:
+        derived_chartversion = '.'.join(parts[:3]) + '-build.' + '.'.join(parts[3:])
+
+    if (newvals.get('chartversion', None) is not None):
+      derived_chartversion = newvals.get('chartversion')
+
+    if (os.path.exists(chart + "/Chart.yaml")):
+        my_file = open(chart + "/Chart.yaml", "r")
+        content_list = my_file.readlines()
+        my_file.close()
+        content_list = list(filter(lambda x: 'Version' not in x, content_list))
+        content_list = list(filter(lambda x: 'version' not in x, content_list))
+        content_list.append('version: "' + derived_chartversion + '"')
+
+        my_file = open(chart + "/Chart.yaml", "w")
+        my_file.writelines(content_list)
+        my_file.close()
 
     timestamp = int(time.time()*1000.0)
     to_dir = "/tmp/dh" + str(timestamp)
@@ -452,7 +468,7 @@ def main():
 
     pid.wait()
 
-    upload_helm(override, chartvalues, newvals, to_dir + ".yml")
+    upload_helm(override, chartvalues, newvals, to_dir + ".yml", from_dir)
 
     os.chdir('/tmp')
 
